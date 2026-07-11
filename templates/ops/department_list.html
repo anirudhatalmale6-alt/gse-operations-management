@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Departments{% endblock %}
+{% block heading %}Departments{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead><tr><th>Code</th><th>Name</th><th class="text-end">Equipment</th><th class="text-end">Employees</th><th>Active</th></tr></thead>
+          <tbody>
+          {% for d in departments %}
+            <tr>
+              <td class="mono">{{ d.code }}</td>
+              <td>{{ d.name }}</td>
+              <td class="text-end">{{ d.equipment.count }}</td>
+              <td class="text-end">{{ d.employees.count }}</td>
+              <td>{% if d.active %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-dash-circle text-muted"></i>{% endif %}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-4">No departments.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <form method="post" class="card">
+      {% csrf_token %}
+      <div class="card-header">Add department</div>
+      <div class="card-body">
+        {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">{{ field.label }}</label>{{ field }}
+            {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="card-footer bg-white"><button class="btn btn-dark btn-sm">Save</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

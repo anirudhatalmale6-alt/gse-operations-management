@@ -1,0 +1,54 @@
+{% load ops_extras %}
+<form method="get" class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-6 col-md-2">
+        <select name="location" class="form-select form-select-sm">
+          <option value="">All locations</option>
+          {% for l in locations %}
+            <option value="{{ l.pk }}" {% if f.location == l.pk|stringformat:"s" %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="department" class="form-select form-select-sm">
+          <option value="">All departments</option>
+          {% for d in departments %}
+            <option value="{{ d.pk }}" {% if f.department == d.pk|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="equipment_type" class="form-select form-select-sm">
+          <option value="">All types</option>
+          {% for t in equipment_types %}
+            <option value="{{ t.pk }}" {% if f.equipment_type == t.pk|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All statuses</option>
+          {% for value, label in statuses %}
+            <option value="{{ value }}" {% if f.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-8 col-md-3">
+        <input type="search" name="q" value="{{ f.q }}" class="form-control form-control-sm"
+               placeholder="Search equipment no. / serial / reg.">
+      </div>
+      <div class="col-4 col-md-1 d-grid">
+        <button class="btn btn-sm btn-dark"><i class="bi bi-funnel"></i> Filter</button>
+      </div>
+    </div>
+    {% if f.location or f.department or f.equipment_type or f.status or f.q or f.expiry %}
+      <div class="mt-2">
+        <a href="{{ request.path }}" class="btn btn-sm btn-link text-decoration-none px-0">
+          <i class="bi bi-x-circle"></i> Clear filters
+        </a>
+        {% if f.expiry %}<span class="badge bg-danger-subtle text-danger-emphasis ms-2">expiry: {{ f.expiry }}</span>{% endif %}
+      </div>
+    {% endif %}
+  </div>
+</form>

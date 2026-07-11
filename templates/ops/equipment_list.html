@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load ops_extras %}
+{% block title %}Equipment Master{% endblock %}
+{% block heading %}Equipment Master{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="text-muted small">{{ total }} unit{{ total|pluralize }} matching</div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'equipment_export' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}"
+       class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i> Export CSV</a>
+    <a href="{% url 'equipment_create' %}" class="btn btn-sm btn-dark"><i class="bi bi-plus-lg"></i> Add Equipment</a>
+  </div>
+</div>
+
+{% include "ops/_filters.html" %}
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th>Equipment No.</th><th>Type</th><th>Model / Manufacturer</th>
+        <th>Location</th><th>Department</th><th>Status</th><th>Compliance</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for e in equipment %}
+        <tr>
+          <td><a href="{{ e.get_absolute_url }}" class="mono text-decoration-none">{{ e.equipment_number }}</a>
+              {% if e.registration_number %}<div class="small text-muted">{{ e.registration_number }}</div>{% endif %}</td>
+          <td>{{ e.equipment_type.name }}</td>
+          <td>{{ e.model|default:"—" }}<div class="small text-muted">{{ e.manufacturer }}</div></td>
+          <td>{{ e.location.name }}<div class="small text-muted">{{ e.location.station }} &middot; {{ e.location.zone }}</div></td>
+          <td>{{ e.department.name }}</td>
+          <td><span class="badge badge-pill {{ e.status|status_class }}">{{ e.get_status_display }}</span></td>
+          <td>
+            {% for c in e.compliance_items %}
+              {% if c.state == 'expired' %}
+                <span class="badge badge-pill bg-danger-subtle text-danger-emphasis" title="{{ c.label }} expired {{ c.date }}">{{ c.label }}</span>
+              {% elif c.state == 'due_soon' %}
+                <span class="badge badge-pill bg-warning-subtle text-warning-emphasis" title="{{ c.label }} due {{ c.date }}">{{ c.label }} {{ c.days }}d</span>
+              {% endif %}
+            {% endfor %}
+          </td>
+          <td class="text-end">
+            <a href="{% url 'equipment_edit' e.pk %}" class="btn btn-sm btn-light border"><i class="bi bi-pencil"></i></a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-5">
+          No equipment matches these filters.
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

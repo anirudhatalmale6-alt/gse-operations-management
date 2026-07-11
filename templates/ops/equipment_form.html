@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block heading %}{{ title }}{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-9">
+    <form method="post" enctype="multipart/form-data" class="card">
+      {% csrf_token %}
+      <div class="card-header">{{ title }}</div>
+      <div class="card-body">
+        {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="row g-3">
+          {% for field in form %}
+            <div class="col-md-{% if field.name == 'remarks' %}12{% else %}4{% endif %}">
+              <label class="form-label small fw-semibold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text small">{{ field.help_text }}</div>{% endif %}
+              {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card-footer bg-white d-flex gap-2">
+        <button class="btn btn-dark">Save</button>
+        <a href="{% if eq %}{{ eq.get_absolute_url }}{% else %}{% url 'equipment_list' %}{% endif %}" class="btn btn-light">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

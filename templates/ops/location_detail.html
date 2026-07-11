@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load ops_extras %}
+{% block title %}{{ loc.name }}{% endblock %}
+{% block heading %}{{ loc }}{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-2"><div class="stat"><div class="label">Total</div><div class="value">{{ stats.total }}</div></div></div>
+  <div class="col-6 col-md-2"><div class="stat"><div class="label text-success">Available</div><div class="value">{{ stats.available }}</div></div></div>
+  <div class="col-6 col-md-2"><div class="stat"><div class="label text-primary">Allocated</div><div class="value">{{ stats.allocated }}</div></div></div>
+  <div class="col-6 col-md-2"><div class="stat"><div class="label text-warning">Maintenance</div><div class="value">{{ stats.maintenance }}</div></div></div>
+  <div class="col-6 col-md-2"><div class="stat"><div class="label text-danger">OOS</div><div class="value">{{ stats.oos }}</div></div></div>
+  <div class="col-6 col-md-2"><div class="stat"><div class="label">Readiness</div><div class="value {{ stats.readiness|readiness_class }}">{{ stats.readiness }}%</div></div></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body small text-muted">
+    <b class="text-dark">Station</b> {{ loc.station }} &nbsp;&middot;&nbsp;
+    <b class="text-dark">Area</b> {{ loc.area|default:"—" }} &nbsp;&middot;&nbsp;
+    <b class="text-dark">Zone</b> {{ loc.zone|default:"—" }} &nbsp;&middot;&nbsp;
+    <b class="text-dark">Department</b> {{ loc.department.name }} &nbsp;&middot;&nbsp;
+    <b class="text-dark">Responsible Supervisor</b> {{ loc.supervisor.full_name|default:"unassigned" }}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-truck"></i> Equipment at this location</div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead><tr><th>Equipment No.</th><th>Type</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for e in equipment %}
+            <tr>
+              <td><a href="{{ e.get_absolute_url }}" class="mono text-decoration-none">{{ e.equipment_number }}</a></td>
+              <td>{{ e.equipment_type.name }}</td>
+              <td><span class="badge badge-pill {{ e.status|status_class }}">{{ e.get_status_display }}</span></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="text-center text-muted py-4">No equipment here.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-clock-history"></i> Recent movements</div>
+      <div class="list-group list-group-flush">
+        {% for m in movements %}
+          <div class="list-group-item py-2 small">
+            <span class="mono">{{ m.equipment.equipment_number }}</span>
+            <span class="badge badge-pill {{ m.status|movement_class }} float-end">{{ m.get_status_display }}</span>
+            <div class="text-muted">{{ m.allocation_date|date:"d M" }} &middot; {{ m.from_location.name|default:"—" }} &rarr; {{ m.to_location.name }}</div>
+          </div>
+        {% empty %}
+          <div class="list-group-item text-muted small py-3">No movements.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

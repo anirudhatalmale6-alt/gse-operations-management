@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load ops_extras %}
+{% block title %}{{ eq.equipment_number }}{% endblock %}
+{% block heading %}Equipment &mdash; {{ eq.equipment_number }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h2 class="h4 mb-1 mono">{{ eq.equipment_number }}
+      <span class="badge badge-pill {{ eq.status|status_class }} align-middle">{{ eq.get_status_display }}</span>
+    </h2>
+    <div class="text-muted">{{ eq.equipment_type.name }} &middot; {{ eq.manufacturer }} {{ eq.model }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'equipment_edit' eq.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i> Edit</a>
+    <button class="btn btn-sm btn-dark" data-bs-toggle="modal" data-bs-target="#moveModal">
+      <i class="bi bi-arrow-left-right"></i> Allocate / Transfer / Return
+    </button>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><i class="bi bi-info-circle"></i> Details</div>
+      <div class="card-body">
+        {% if eq.photo %}
+          <img src="{{ eq.photo.url }}" class="img-fluid rounded mb-3 border" alt="{{ eq.equipment_number }}">
+        {% endif %}
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal">Serial Number</th><td class="text-end">{{ eq.serial_number|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Registration</th><td class="text-end">{{ eq.registration_number|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Purchase Date</th><td class="text-end">{{ eq.purchase_date|date:"d M Y"|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Current Location</th>
+              <td class="text-end"><a href="{{ eq.location.get_absolute_url }}" class="text-decoration-none">{{ eq.location }}</a></td></tr>
+          <tr><th class="text-muted fw-normal">Zone / Area</th><td class="text-end">{{ eq.location.zone|default:"—" }} / {{ eq.location.area|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Department</th><td class="text-end">{{ eq.department.name }}</td></tr>
+        </table>
+        {% if eq.remarks %}<div class="alert alert-light border mt-3 mb-0 small">{{ eq.remarks|linebreaksbr }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-shield-check"></i> Compliance</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead><tr><th>Certificate</th><th>Date</th><th class="text-end">Status</th></tr></thead>
+          <tbody>
+          {% for c in compliance %}
+            <tr>
+              <td>{{ c.label }}</td>
+              <td>{{ c.date|date:"d M Y"|default:"—" }}</td>
+              <td class="text-end">
+                {% if c.state == 'expired' %}
+                  <span class="badge badge-pill {{ c.state|compliance_class }}">Expired</span>
+                {% elif c.state == 'due_soon' %}
+                  <span class="badge badge-pill {{ c.state|compliance_class }}">{{ c.days }} days left</span>
+                {% elif c.state == 'ok' %}
+                  <span class="badge badge-pill {{ c.state|compliance_class }}">Valid</span>
+                {% else %}
+                  <span class="badge badge-pill {{ c.state|compliance_class }}">Not set</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header"><i class="bi bi-clock-history"></i> Movement History</div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead><tr>
+            <th>Date / Time</th><th>Type</th><th>From &rarr; To</th>
+            <th>Raised by</th><th>Approved by</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>
+          {% for m in movements %}
+            <tr>
+              <td>{{ m.allocation_date|date:"d M Y" }}<div class="small text-muted">{{ m.allocation_time|time:"H:i"|default:"" }}</div></td>
+              <td>{{ m.get_movement_type_display }}</td>
+              <td>{{ m.from_location.name|default:"—" }} &rarr; <b>{{ m.to_location.name }}</b>
+                  {% if m.reason %}<div class="small text-muted">{{ m.reason }}</div>{% endif %}</td>
+              <td class="small">{{ m.allocated_by_name }}</td>
+              <td class="small">{{ m.approved_by_name|default:"—" }}</td>
+              <td><span class="badge badge-pill {{ m.status|movement_class }}">{{ m.get_status_display }}</span>
+                  {% if m.returned_at %}<div class="small text-muted">returned</div>{% endif %}</td>
+              <td class="text-end">
+                {% if m.status == 'PENDING' %}
+                  <a href="{% url 'movement_action' m.pk 'approve' %}" class="btn btn-sm btn-outline-success"><i class="bi bi-check-lg"></i></a>
+                  <a href="{% url 'movement_action' m.pk 'reject' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No movements recorded yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-paperclip"></i> Documents</div>
+      <div class="card-body">
+        <div class="row g-2 mb-3">
+          {% for d in eq.documents.all %}
+            <div class="col-md-6">
+              <a href="{{ d.file.url }}" target="_blank" class="d-flex align-items-center gap-2 border rounded p-2 text-decoration-none">
+                <i class="bi bi-file-earmark-text fs-4 text-secondary"></i>
+                <span class="small">
+                  <b class="d-block text-dark">{{ d.title }}</b>
+                  <span class="text-muted">{{ d.get_doc_type_display }}{% if d.expiry_date %} &middot; exp {{ d.expiry_date|date:"d M Y" }}{% endif %}</span>
+                </span>
+              </a>
+            </div>
+          {% empty %}
+            <div class="col-12 text-muted small">No documents uploaded.</div>
+          {% endfor %}
+        </div>
+        <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end border-top pt-3">
+          {% csrf_token %}
+          <div class="col-md-3">{{ doc_form.doc_type.label_tag }}{{ doc_form.doc_type }}</div>
+          <div class="col-md-3">{{ doc_form.title.label_tag }}{{ doc_form.title }}</div>
+          <div class="col-md-3">{{ doc_form.file.label_tag }}{{ doc_form.file }}</div>
+          <div class="col-md-2">{{ doc_form.expiry_date.label_tag }}{{ doc_form.expiry_date }}</div>
+          <div class="col-md-1 d-grid">
+            <button name="upload_document" value="1" class="btn btn-sm btn-dark">Upload</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="moveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="{% url 'movement_create' eq.pk %}" class="modal-content">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Move {{ eq.equipment_number }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-light border small">
+          Currently at <b>{{ eq.location }}</b> &middot; {{ eq.get_status_display }}
+        </div>
+        {% for field in move_form %}
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}<div class="text-danger small">{{ field.errors.0 }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-dark">Raise request</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

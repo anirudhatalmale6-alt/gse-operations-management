@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Employees{% endblock %}
+{% block heading %}Employee Master{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <form class="d-flex gap-2" method="get">
+    <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="width:260px" placeholder="Search name or employee no.">
+    <button class="btn btn-sm btn-dark">Search</button>
+  </form>
+  <a href="{% url 'employee_create' %}" class="btn btn-sm btn-dark"><i class="bi bi-plus-lg"></i> Add Employee</a>
+</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>Employee No.</th><th>Name</th><th>Designation</th><th>Department</th><th>Base Location</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for e in employees %}
+        <tr>
+          <td class="mono">{{ e.employee_number }}</td>
+          <td><a href="{{ e.get_absolute_url }}" class="text-decoration-none fw-semibold">{{ e.full_name }}</a></td>
+          <td>{{ e.designation|default:"—" }}</td>
+          <td>{{ e.department.name }}</td>
+          <td class="small">{{ e.base_location|default:"—" }}</td>
+          <td><span class="badge badge-pill {% if e.status == 'ACTIVE' %}bg-success-subtle text-success-emphasis{% else %}bg-secondary-subtle text-secondary-emphasis{% endif %}">{{ e.get_status_display }}</span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-5">No employees yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

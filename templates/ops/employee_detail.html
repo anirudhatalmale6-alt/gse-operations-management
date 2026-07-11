@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load ops_extras %}
+{% block title %}{{ emp.full_name }}{% endblock %}
+{% block heading %}{{ emp.full_name }}{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-person"></i> Details</div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal">Employee No.</th><td class="text-end mono">{{ emp.employee_number }}</td></tr>
+          <tr><th class="text-muted fw-normal">Designation</th><td class="text-end">{{ emp.designation|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Department</th><td class="text-end">{{ emp.department.name }}</td></tr>
+          <tr><th class="text-muted fw-normal">Base Location</th><td class="text-end">{{ emp.base_location|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Phone</th><td class="text-end">{{ emp.phone|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Joined</th><td class="text-end">{{ emp.joined_on|date:"d M Y"|default:"—" }}</td></tr>
+          <tr><th class="text-muted fw-normal">Status</th><td class="text-end">{{ emp.get_status_display }}</td></tr>
+        </table>
+        {% if supervised %}
+          <div class="mt-3 small">
+            <b>Supervises:</b>
+            {% for l in supervised %}<a href="{{ l.get_absolute_url }}" class="badge bg-light text-dark border text-decoration-none">{{ l.name }}</a>{% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-mortarboard"></i> Training &amp; Certification</div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+          <thead><tr><th>Course</th><th>Completed</th><th>Expires</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for t in training %}
+            <tr>
+              <td>{{ t.course.name }}<div class="small text-muted mono">{{ t.course.code }}</div></td>
+              <td>{{ t.completed_on|date:"d M Y" }}</td>
+              <td>{{ t.expires_on|date:"d M Y"|default:"—" }}</td>
+              <td><span class="badge badge-pill {{ t.state|compliance_class }}">
+                {% if t.state == 'expired' %}Expired{% elif t.state == 'due_soon' %}Renew soon{% else %}Valid{% endif %}
+              </span></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4" class="text-center text-muted py-4">No training records.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

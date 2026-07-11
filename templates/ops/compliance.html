@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% load ops_extras %}
+{% block title %}Compliance{% endblock %}
+{% block heading %}Compliance &amp; Expiry Control{% endblock %}
+{% block content %}
+<div class="card mb-3">
+  <div class="card-header text-danger"><i class="bi bi-exclamation-octagon"></i> Expired &mdash; grounded ({{ expired.count }})</div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr><th>Equipment</th><th>Type</th><th>Location</th><th>PM Due</th><th>TUV</th><th>Ramp Pass</th><th>Insurance</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for e in expired %}
+        <tr>
+          <td><a href="{{ e.get_absolute_url }}" class="mono text-decoration-none">{{ e.equipment_number }}</a></td>
+          <td>{{ e.equipment_type.name }}</td>
+          <td class="small">{{ e.location.name }}</td>
+          {% for c in e.compliance_items %}
+            <td class="small">
+              {% if c.date %}
+                <span class="badge badge-pill {{ c.state|compliance_class }}">{{ c.date|date:"d M y" }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+          {% endfor %}
+          <td><span class="badge badge-pill {{ e.status|status_class }}">{{ e.get_status_display }}</span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Nothing expired. Fleet is fully certified.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header text-warning-emphasis"><i class="bi bi-hourglass"></i> Expiring within {{ warning_days }} days ({{ upcoming.count }})</div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr><th>Equipment</th><th>Type</th><th>Location</th><th>PM Due</th><th>TUV</th><th>Ramp Pass</th><th>Insurance</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for e in upcoming %}
+        <tr>
+          <td><a href="{{ e.get_absolute_url }}" class="mono text-decoration-none">{{ e.equipment_number }}</a></td>
+          <td>{{ e.equipment_type.name }}</td>
+          <td class="small">{{ e.location.name }}</td>
+          {% for c in e.compliance_items %}
+            <td class="small">
+              {% if c.date %}
+                <span class="badge badge-pill {{ c.state|compliance_class }}">{{ c.date|date:"d M y" }}{% if c.state == 'due_soon' %} · {{ c.days }}d{% endif %}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+          {% endfor %}
+          <td><span class="badge badge-pill {{ e.status|status_class }}">{{ e.get_status_display }}</span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Nothing due in the next {{ warning_days }} days.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><i class="bi bi-mortarboard"></i> Employee training due / expired</div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr><th>Employee</th><th>Course</th><th>Completed</th><th>Expires</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for t in training %}
+        <tr>
+          <td><a href="{{ t.employee.get_absolute_url }}" class="text-decoration-none">{{ t.employee.full_name }}</a>
+              <div class="small text-muted mono">{{ t.employee.employee_number }}</div></td>
+          <td>{{ t.course.name }}</td>
+          <td>{{ t.completed_on|date:"d M Y" }}</td>
+          <td>{{ t.expires_on|date:"d M Y" }}</td>
+          <td><span class="badge badge-pill {{ t.state|compliance_class }}">
+            {% if t.state == 'expired' %}Expired{% elif t.state == 'due_soon' %}Renew soon{% else %}Valid{% endif %}
+          </span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="text-center text-muted py-4">All training current.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

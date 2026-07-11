@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load ops_extras %}
+{% block title %}Allocations{% endblock %}
+{% block heading %}Equipment Allocation &amp; Movement{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{% url 'movement_list' %}" class="btn btn-sm {% if not status %}btn-dark{% else %}btn-light border{% endif %}">All</a>
+  {% for value, label in statuses %}
+    <a href="?status={{ value }}" class="btn btn-sm {% if status == value %}btn-dark{% else %}btn-light border{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th>Date / Time</th><th>Equipment</th><th>Type</th><th>From</th><th>To</th>
+        <th>Reason</th><th>Allocated by</th><th>Approved by</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for m in movements %}
+        <tr>
+          <td>{{ m.allocation_date|date:"d M Y" }}<div class="small text-muted">{{ m.allocation_time|time:"H:i" }}</div></td>
+          <td><a href="{{ m.equipment.get_absolute_url }}" class="mono text-decoration-none">{{ m.equipment.equipment_number }}</a></td>
+          <td>{{ m.get_movement_type_display }}</td>
+          <td class="small">{{ m.from_location.name|default:"—" }}</td>
+          <td class="small fw-semibold">{{ m.to_location.name }}</td>
+          <td class="small text-muted">{{ m.reason|default:"—"|truncatechars:40 }}</td>
+          <td class="small">{{ m.allocated_by_name }}</td>
+          <td class="small">{{ m.approved_by_name|default:"—" }}</td>
+          <td><span class="badge badge-pill {{ m.status|movement_class }}">{{ m.get_status_display }}</span></td>
+          <td class="text-end">
+            {% if m.status == 'PENDING' %}
+              <a href="{% url 'movement_action' m.pk 'approve' %}" class="btn btn-sm btn-outline-success"><i class="bi bi-check-lg"></i> Approve</a>
+              <a href="{% url 'movement_action' m.pk 'reject' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10" class="text-center text-muted py-5">No movements yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
