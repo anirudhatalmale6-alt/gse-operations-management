@@ -1,6 +1,6 @@
 from django.utils import timezone
 
-from .models import Movement
+from .models import Movement, ServiceEvent
 
 
 def alerts(request):
@@ -16,4 +16,5 @@ def alerts(request):
             status=Movement.Status.PENDING
         ).count(),
         "nav_compliance_count": stats["expired"] + stats["upcoming"],
+        "nav_oos_count": ServiceEvent.objects.filter(closed_on__isnull=True).count(),
     }

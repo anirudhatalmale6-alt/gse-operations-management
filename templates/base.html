@@ -50,8 +50,11 @@
   </div>
   <ul class="nav flex-column mt-2">
     <li><a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+    <li><a class="nav-link {% if 'daily_report' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'daily_report' %}"><i class="bi bi-file-earmark-bar-graph"></i> Daily Report</a></li>
     <div class="nav-head">Equipment</div>
     <li><a class="nav-link {% if 'equipment' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'equipment_list' %}"><i class="bi bi-truck"></i> Equipment Master</a></li>
+    <li><a class="nav-link {% if 'oos' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'oos_register' %}"><i class="bi bi-cone-striped"></i> Out of Operation
+      {% if nav_oos_count %}<span class="badge bg-danger ms-1">{{ nav_oos_count }}</span>{% endif %}</a></li>
     <li><a class="nav-link {% if 'movement' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'movement_list' %}"><i class="bi bi-arrow-left-right"></i> Allocations
       {% if nav_pending_count %}<span class="badge bg-warning text-dark ms-1">{{ nav_pending_count }}</span>{% endif %}</a></li>
     <li><a class="nav-link {% if request.resolver_match.url_name == 'compliance' %}active{% endif %}" href="{% url 'compliance' %}"><i class="bi bi-shield-check"></i> Compliance

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% load humanize ops_extras %}
+{% block title %}Daily GSE Report{% endblock %}
+{% block heading %}Daily GSE Equipment Status{% endblock %}
+
+{% block actions %}
+  <a href="{% url 'daily_report_export' %}" class="btn btn-sm btn-dark">
+    <i class="bi bi-download"></i> Export CSV
+  </a>
+{% endblock %}
+
+{% block content %}
+<p class="text-muted">
+  Same report your team produces by hand each morning &mdash; every figure here is
+  counted from the equipment and out-of-operation records, as of
+  <strong>{{ report.as_of|date:"d M Y" }}</strong>. Nothing is typed in, so this
+  report and the OOS list can never disagree.
+</p>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small text-uppercase">Total actual count</div>
+      <div class="display-6 fw-semibold">{{ report.totals.actual }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small text-uppercase">In service</div>
+      <div class="display-6 fw-semibold text-success">{{ report.totals.in_service }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small text-uppercase">Out of operation</div>
+      <div class="display-6 fw-semibold text-danger">{{ report.totals.oos }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <div class="text-muted small text-uppercase">In-service %</div>
+      <div class="display-6 fw-semibold {{ report.totals.in_service_pct|readiness_class }}">
+        {{ report.totals.in_service_pct }}%
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{% if unclassified_pushbacks %}
+<div class="alert alert-warning d-flex align-items-start gap-2">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div>
+    <strong>{{ unclassified_pushbacks }} pushbacks cannot be split into conventional
+    vs towbarless from your equipment master.</strong>
+    The master records all 72 of them as just &ldquo;Pushback&rdquo;, but the daily
+    report needs the split (51 / 21). I could type the split in to make the numbers
+    look right, but then the system would be guessing &mdash; so it is showing you
+    the gap instead. Tell me which units are towbarless (or send the list) and these
+    three rows collapse into two correct ones.
+  </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold">Equipment status by type</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0 small">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>GSE Equipment</th>
+          <th class="text-end">Grand total</th>
+          <th class="text-end">To out-station</th>
+          <th class="text-end">Overage</th>
+          <th class="text-end">From local</th>
+          <th class="text-end">Actual count</th>
+          <th class="text-end">R/S</th>
+          <th class="text-end">TUV</th>
+          <th class="text-end">PM</th>
+          <th class="text-end">Repair</th>
+          <th class="text-end">OOS</th>
+          <th class="text-end">In service</th>
+          <th class="text-end">In-service %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in report.lines %}
+        <tr>
+          <td class="text-muted">{{ forloop.counter }}</td>
+          <td class="fw-semibold">{{ l.type }}</td>
+          <td class="text-end">{{ l.grand_total }}</td>
+          <td class="text-end text-muted">{{ l.to_out_station|default_if_none:"" }}</td>
+          <td class="text-end text-muted">{{ l.overage }}</td>
+          <td class="text-end text-muted">{{ l.from_local }}</td>
+          <td class="text-end fw-semibold">{{ l.actual }}</td>
+          <td class="text-end">{{ l.rs }}</td>
+          <td class="text-end">{{ l.tuv }}</td>
+          <td class="text-end">{{ l.pm }}</td>
+          <td class="text-end">{{ l.repair }}</td>
+          <td class="text-end fw-semibold {% if l.oos %}text-danger{% endif %}">{{ l.oos }}</td>
+          <td class="text-end fw-semibold text-success">{{ l.in_service }}</td>
+          <td class="text-end fw-semibold {{ l.in_service_pct|readiness_class }}">
+            {{ l.in_service_pct }}%
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-dark">
+        <tr class="fw-semibold">
+          <td></td>
+          <td>TOTAL</td>
+          <td class="text-end">{{ report.totals.grand_total }}</td>
+          <td class="text-end">{{ report.totals.to_out_station }}</td>
+          <td class="text-end">{{ report.totals.overage }}</td>
+          <td class="text-end">{{ report.totals.from_local }}</td>
+          <td class="text-end">{{ report.totals.actual }}</td>
+          <td class="text-end">{{ report.totals.rs }}</td>
+          <td class="text-end">{{ report.totals.tuv }}</td>
+          <td class="text-end">{{ report.totals.pm }}</td>
+          <td class="text-end">{{ report.totals.repair }}</td>
+          <td class="text-end">{{ report.totals.oos }}</td>
+          <td class="text-end">{{ report.totals.in_service }}</td>
+          <td class="text-end">{{ report.totals.in_service_pct }}%</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white fw-semibold">
+    In-service equipment per parking location
+  </div>
+  {% if matrix.rows %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0 small">
+      <thead class="table-light">
+        <tr>
+          <th>Location</th>
+          {% for t in matrix.types %}<th class="text-end">{{ t }}</th>{% endfor %}
+          <th class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in matrix.rows %}
+        <tr>
+          <td class="fw-semibold">{{ r.location }}</td>
+          {% for c in r.cells %}
+            <td class="text-end {% if not c %}text-muted{% endif %}">{{ c|default:"—" }}</td>
+          {% endfor %}
+          <td class="text-end fw-semibold">{{ r.total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">
+    <div class="alert alert-warning mb-0">
+      <strong>No parking locations are recorded against any unit yet.</strong><br>
+      The equipment master has a Location column but it is empty for all
+      {{ report.totals.actual }} units, so today nobody can answer
+      &ldquo;where is GS260212 right now?&rdquo; from the data &mdash; only how many
+      of each type are somewhere. Once units are allocated to stands on the
+      Allocation screen, this grid fills itself in.
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

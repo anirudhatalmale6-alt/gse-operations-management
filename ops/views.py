@@ -25,6 +25,7 @@ from .models import (
     EquipmentType,
     Location,
     Movement,
+    ServiceEvent,
     TrainingRecord,
 )
 
@@ -398,3 +399,91 @@ def compliance(request):
             "warning_days": settings.EXPIRY_WARNING_DAYS,
         },
     )
+
+
+@login_required
+def oos_register(request):
+    """The out-of-operation list, with the ageing column the workbook can't compute."""
+    data = services.oos_aging()
+    reason = request.GET.get("reason", "")
+    bucket = request.GET.get("bucket", "")
+    rows = data["rows"]
+    if reason:
+        rows = [r for r in rows if r["event"].reason == reason]
+    if bucket:
+        rows = [r for r in rows if r["bucket"] == bucket]
+    return render(
+        request,
+        "ops/oos_register.html",
+        {
+            "data": data,
+            "rows": rows,
+            "reasons": ServiceEvent.Reason.choices,
+            "reason": reason,
+            "bucket": bucket,
+        },
+    )
+
+
+@login_required
+def oos_close(request, pk):
+    """Return a unit to service -- one click, instead of deleting a spreadsheet row."""
+    event = get_object_or_404(ServiceEvent, pk=pk, closed_on__isnull=True)
+    if request.method == "POST":
+        event.close()
+        messages.success(
+            request,
+            f"{event.equipment.equipment_number} returned to service after "
+            f"{event.days_out()} days.",
+        )
+    return redirect("oos_register")
+
+
+@login_required
+def daily_report(request):
+    """The station's daily report -- same layout as the workbook, computed."""
+    return render(
+        request,
+        "ops/daily_report.html",
+        {
+            "report": services.daily_report(),
+            "matrix": services.location_matrix(),
+            "aging": services.oos_aging(),
+            # The master calls every pushback "Pushback"; the report needs the
+            # conventional/towbarless split. Say so rather than quietly guessing.
+            "unclassified_pushbacks": Equipment.objects.filter(
+                equipment_type__name="Pushback"
+            ).count(),
+        },
+    )
+
+
+@login_required
+def daily_report_export(request):
+    """The daily report as CSV, ready to paste or mail on."""
+    report = services.daily_report()
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = (
+        f'attachment; filename="daily-gse-report-{report["as_of"]}.csv"'
+    )
+    w = csv.writer(response)
+    w.writerow([f"DAILY GSE EQUIPMENT STATUS - JED STATION", "", f"DATE: {report['as_of']}"])
+    w.writerow([])
+    w.writerow(
+        ["#", "GSE EQUIPMENT", "GSE COUNT (GRAND TOTAL)", "TO SUPPORT OUT-STATION",
+         "OVERAGE UNIT", "FROM LOCAL STATION", "TOTAL ACTUAL COUNT", "R/S", "TUV",
+         "PM", "REPAIR", "OOS COUNT", "IN-SERVICE COUNT", "OOS %", "IN-SERVICE %"]
+    )
+    for i, l in enumerate(report["lines"], 1):
+        w.writerow(
+            [i, l["type"], l["grand_total"], l["to_out_station"], l["overage"],
+             l["from_local"], l["actual"], l["rs"], l["tuv"], l["pm"], l["repair"],
+             l["oos"], l["in_service"], f'{l["oos_pct"]}%', f'{l["in_service_pct"]}%']
+        )
+    t = report["totals"]
+    w.writerow(
+        ["", "TOTAL", t["grand_total"], t["to_out_station"], t["overage"],
+         t["from_local"], t["actual"], t["rs"], t["tuv"], t["pm"], t["repair"],
+         t["oos"], t["in_service"], f'{t["oos_pct"]}%', f'{t["in_service_pct"]}%']
+    )
+    return response

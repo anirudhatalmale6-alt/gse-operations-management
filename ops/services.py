@@ -1,12 +1,19 @@
 """Dashboard aggregation and the readiness calculation."""
 
+from collections import Counter, defaultdict
 from datetime import timedelta
 
 from django.conf import settings
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from .models import Equipment, Location, Movement, ReadinessSnapshot
+from .models import (
+    Equipment,
+    Location,
+    Movement,
+    ReadinessSnapshot,
+    ServiceEvent,
+)
 
 
 def _expiry_q(today, horizon=None):
@@ -171,3 +178,150 @@ def pending_approvals():
         Movement.objects.filter(status=Movement.Status.PENDING)
         .select_related("equipment", "from_location", "to_location", "allocated_by")
     )
+
+
+# ------------------------------------------------------------- OOS / daily report
+
+
+def oos_register(as_of=None):
+    """Every unit currently out of operation, oldest first, with real ageing.
+
+    The workbook computes this with =DAYS(NOW(), start) and every row of the
+    live file renders #NAME?, so the ageing is invisible today. This is that
+    column, working, and it is what surfaces the units that have been sitting
+    in the workshop for years.
+    """
+    as_of = as_of or timezone.localdate()
+    events = (
+        ServiceEvent.objects.filter(closed_on__isnull=True)
+        .select_related("equipment", "equipment__equipment_type")
+        .order_by("start_date")
+    )
+    rows = []
+    for e in events:
+        rows.append({"event": e, "days": e.days_out(as_of), "bucket": e.age_bucket})
+    return rows
+
+
+def oos_aging(as_of=None):
+    """Bucketed ageing of the open OOS list, plus the worst offenders."""
+    rows = oos_register(as_of)
+    order = ["0-7", "8-30", "31-60", "61-90", "90+"]
+    buckets = {k: 0 for k in order}
+    for r in rows:
+        buckets[r["bucket"]] += 1
+    total = len(rows) or 1
+    stale = [r for r in rows if r["days"] > 90]
+    stale.sort(key=lambda r: -r["days"])
+    by_reason = Counter(r["event"].get_reason_display() for r in rows)
+    days = sorted(r["days"] for r in rows)
+    return {
+        "rows": rows,
+        "total": len(rows),
+        "buckets": [
+            {"label": k, "n": buckets[k], "pct": round(buckets[k] / total * 100)}
+            for k in order
+        ],
+        "by_reason": dict(by_reason),
+        "stale": stale,
+        "stale_count": len(stale),
+        "avg_days": round(sum(days) / len(days)) if days else 0,
+        "median_days": days[len(days) // 2] if days else 0,
+        "max_days": days[-1] if days else 0,
+        # What in-service % would be if the long-dead units were written off.
+        "recoverable_pct": round(len(stale) / total * 100) if days else 0,
+    }
+
+
+def daily_report(as_of=None):
+    """Rebuild the station's DAILY GSE REPORT from the database.
+
+    Same shape as the spreadsheet, same arithmetic (G = C - D + E + F), but every
+    number is counted rather than typed, so the report and the OOS list cannot
+    drift apart.
+    """
+    as_of = as_of or timezone.localdate()
+    open_events = ServiceEvent.objects.filter(closed_on__isnull=True)
+
+    # OOS counts per (type, reason) in one query.
+    oos_by_type = defaultdict(lambda: defaultdict(int))
+    for tname, reason in open_events.values_list(
+        "equipment__equipment_type__name", "reason"
+    ):
+        oos_by_type[tname][ServiceEvent.REASON_TO_COLUMN[reason]] += 1
+
+    counts = (
+        Equipment.objects.order_by()
+        .values("equipment_type__name")
+        .annotate(
+            total=Count("id"),
+            overage=Count("id", filter=Q(is_overage=True)),
+            support_in=Count(
+                "id", filter=Q(ownership=Equipment.Ownership.LOCAL_SUPPORT)
+            ),
+            support_out=Count(
+                "id", filter=Q(ownership=Equipment.Ownership.OUT_STATION)
+            ),
+        )
+        .order_by("equipment_type__name")
+    )
+
+    lines, totals = [], defaultdict(int)
+    for c in counts:
+        name = c["equipment_type__name"]
+        o = oos_by_type.get(name, {})
+        rs, tuv, pm, rep = o.get("R/S", 0), o.get("TUV", 0), o.get("PM", 0), o.get(
+            "REPAIR", 0
+        )
+        oos = rs + tuv + pm + rep
+        actual = c["total"]
+        in_svc = actual - oos
+        line = {
+            "type": name,
+            "grand_total": actual - c["support_in"] + c["support_out"] - c["overage"],
+            "to_out_station": c["support_out"],
+            "overage": c["overage"],
+            "from_local": c["support_in"],
+            "actual": actual,
+            "rs": rs,
+            "tuv": tuv,
+            "pm": pm,
+            "repair": rep,
+            "oos": oos,
+            "in_service": in_svc,
+            "oos_pct": round(oos / actual * 100, 1) if actual else 0,
+            "in_service_pct": round(in_svc / actual * 100, 1) if actual else 0,
+        }
+        lines.append(line)
+        for k in ("grand_total", "to_out_station", "overage", "from_local", "actual",
+                  "rs", "tuv", "pm", "repair", "oos", "in_service"):
+            totals[k] += line[k]
+
+    actual = totals["actual"] or 1
+    totals["oos_pct"] = round(totals["oos"] / actual * 100, 1)
+    totals["in_service_pct"] = round(totals["in_service"] / actual * 100, 1)
+
+    return {"as_of": as_of, "lines": lines, "totals": dict(totals)}
+
+
+def location_matrix():
+    """In-service units per parking location x equipment type -- the second grid
+    on the daily sheet. Only serviceable units are counted, as on the sheet."""
+    grid = defaultdict(lambda: defaultdict(int))
+    types = set()
+    qs = (
+        Equipment.objects.filter(location__isnull=False)
+        .exclude(service_events__closed_on__isnull=True)
+        .order_by()
+        .values("location__name", "equipment_type__name")
+        .annotate(n=Count("id"))
+    )
+    for r in qs:
+        grid[r["location__name"]][r["equipment_type__name"]] += r["n"]
+        types.add(r["equipment_type__name"])
+    types = sorted(types)
+    rows = []
+    for loc in sorted(grid):
+        cells = [grid[loc].get(t, 0) for t in types]
+        rows.append({"location": loc, "cells": cells, "total": sum(cells)})
+    return {"types": types, "rows": rows}

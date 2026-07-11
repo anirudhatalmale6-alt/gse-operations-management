@@ -144,21 +144,66 @@ class Equipment(TimeStamped):
     # Statuses a supervisor owns -- the compliance engine must never overwrite these.
     MANUAL_ONLY = {Status.MAINTENANCE, Status.OOS, Status.SCRAP}
 
-    equipment_number = models.CharField(max_length=40, unique=True, db_index=True)
+    class Ownership(models.TextChoices):
+        """Mirrors the 'Remarks' column of the station equipment master."""
+
+        STATION = "STATION", "Station Equipment"
+        LOCAL_SUPPORT = "LOCAL_SUPPORT", "From Local Station to Support"
+        SRA = "SRA", "Station Equipment - SRA"
+        OUT_STATION = "OUT_STATION", "Sent to Support Out-Station"
+
+    # GS number -- the station's own asset ID (e.g. GS260212).
+    equipment_number = models.CharField(
+        max_length=40, unique=True, db_index=True, verbose_name="Equipment number (GS)"
+    )
+    # The customer/handler's own fleet number for the same unit (e.g. 14764).
+    # Two systems, two IDs for one physical machine -- both must stay unique.
+    fleet_number = models.CharField(
+        max_length=40,
+        blank=True,
+        null=True,
+        unique=True,
+        db_index=True,
+        verbose_name="Fleet number",
+        help_text="The customer's equipment number for this same unit.",
+    )
     equipment_type = models.ForeignKey(
         EquipmentType, on_delete=models.PROTECT, related_name="equipment"
     )
-    model = models.CharField(max_length=80, blank=True)
+    model = models.CharField(max_length=80, blank=True, verbose_name="OEM model")
     manufacturer = models.CharField(max_length=80, blank=True)
-    serial_number = models.CharField(max_length=80, blank=True)
+    serial_number = models.CharField(
+        max_length=80, blank=True, verbose_name="OEM serial number"
+    )
     registration_number = models.CharField(max_length=40, blank=True)
-    purchase_date = models.DateField(null=True, blank=True)
+    purchase_date = models.DateField(
+        null=True, blank=True, verbose_name="Receipt date"
+    )
+    equipment_class = models.CharField(max_length=40, blank=True, verbose_name="Class")
+    equipment_owner = models.CharField(max_length=80, blank=True)
+    customer_site_access = models.CharField(max_length=80, blank=True)
+
+    ownership = models.CharField(
+        max_length=20,
+        choices=Ownership.choices,
+        default=Ownership.STATION,
+        db_index=True,
+    )
+    is_overage = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Overage unit",
+        help_text="Past its nominal service life but still counted in the fleet.",
+    )
 
     location = models.ForeignKey(
         Location,
         on_delete=models.PROTECT,
         related_name="equipment_here",
         verbose_name="Current location",
+        null=True,
+        blank=True,
+        help_text="Blank means the unit has never been assigned a parking location.",
     )
     department = models.ForeignKey(
         Department, on_delete=models.PROTECT, related_name="equipment"
@@ -298,6 +343,99 @@ class EquipmentDocument(TimeStamped):
 
     def __str__(self):
         return f"{self.equipment.equipment_number} - {self.title}"
+
+
+# ------------------------------------------------------------- out of operation (OOS)
+
+
+class ServiceEvent(TimeStamped):
+    """One spell out of operation for one unit.
+
+    This is the row-per-unit log the daily OOS sheet keeps by hand. Every OOS
+    number on the daily report is a count over the open events in this table,
+    so the report and the list can never disagree again.
+    """
+
+    class Reason(models.TextChoices):
+        REPAIR = "REPAIR", "Repair"
+        PM = "PM", "PM"
+        TUV = "TUV", "TUV"
+        RS = "RS", "R/S (Gate 3 security case)"
+
+    equipment = models.ForeignKey(
+        Equipment, on_delete=models.CASCADE, related_name="service_events"
+    )
+    section = models.CharField(max_length=40, blank=True, default="Ramp")
+    reason = models.CharField(max_length=10, choices=Reason.choices, db_index=True)
+    start_date = models.DateField(db_index=True)
+    closed_on = models.DateField(
+        null=True, blank=True, db_index=True, help_text="Blank while still out."
+    )
+
+    service_request_number = models.CharField(
+        max_length=30, blank=True, verbose_name="Service request #"
+    )
+    workshop_location = models.CharField(
+        max_length=60, blank=True, help_text="Workshop, Gate 3, a stand, etc."
+    )
+    work_order_request_time = models.CharField(
+        max_length=10, blank=True, help_text="24h, as recorded on the sheet (e.g. 0732)"
+    )
+    time_sent_to_workshop = models.CharField(max_length=40, blank=True)
+    status_note = models.CharField(max_length=120, blank=True)
+    gse_group_remarks = models.TextField(blank=True)
+
+    # Which OOS bucket on the daily report this event lands in.
+    REASON_TO_COLUMN = {
+        Reason.RS: "R/S",
+        Reason.TUV: "TUV",
+        Reason.PM: "PM",
+        Reason.REPAIR: "REPAIR",
+    }
+
+    class Meta:
+        ordering = ["-start_date", "equipment__equipment_number"]
+        indexes = [models.Index(fields=["closed_on", "reason"])]
+
+    def __str__(self):
+        return f"{self.equipment.equipment_number} - {self.get_reason_display()}"
+
+    @property
+    def is_open(self):
+        return self.closed_on is None
+
+    def days_out(self, as_of=None):
+        """Days this unit has been out of operation.
+
+        The spreadsheet tries to do this with =DAYS(NOW(), start) and every row
+        of the live file renders #NAME?, so nobody can see the ageing. This is
+        that column, working.
+        """
+        end = self.closed_on or (as_of or timezone.localdate())
+        return (end - self.start_date).days
+
+    @property
+    def age_bucket(self):
+        d = self.days_out()
+        if d <= 7:
+            return "0-7"
+        if d <= 30:
+            return "8-30"
+        if d <= 60:
+            return "31-60"
+        if d <= 90:
+            return "61-90"
+        return "90+"
+
+    def close(self, on=None):
+        """Return the unit to service."""
+        self.closed_on = on or timezone.localdate()
+        self.save(update_fields=["closed_on", "updated_at"])
+        eq = self.equipment
+        if not eq.service_events.filter(closed_on__isnull=True).exists():
+            eq.status = Equipment.Status.AVAILABLE
+            eq.save(update_fields=["status", "updated_at"])
+        return self
 
 
 # ------------------------------------------------------------------------ allocation

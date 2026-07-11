@@ -34,6 +34,14 @@ urlpatterns = [
 
     path("departments/", views.department_list, name="department_list"),
     path("compliance/", views.compliance, name="compliance"),
+    path("oos/", views.oos_register, name="oos_register"),
+    path("oos/<int:pk>/close/", views.oos_close, name="oos_close"),
+    path("daily-report/", views.daily_report, name="daily_report"),
+    path(
+        "daily-report/export/",
+        views.daily_report_export,
+        name="daily_report_export",
+    ),
 
     path(
         "login/",

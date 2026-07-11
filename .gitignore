@@ -6,3 +6,17 @@ __pycache__/
 *.pyc
 server.log
 export_sample.csv
+
+# client's source workbook -- their operational data, not ours to publish
+TH.xlsx
+verify.py
+
+# Screenshots taken against the client's REAL fleet data -- these contain live
+# equipment numbers and service-request numbers. The repo is public; his
+# operational data stays out of it. Sent to him directly instead.
+screenshots/30-*.png
+screenshots/31-*.png
+screenshots/32-*.png
+screenshots/33-*.png
+screenshots/35-*.png
+delivery/

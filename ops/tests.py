@@ -6,7 +6,14 @@ from django.utils import timezone
 
 from ops import services
 from ops.forms import MovementForm
-from ops.models import Department, Equipment, EquipmentType, Location, Movement
+from ops.models import (
+    Department,
+    Equipment,
+    EquipmentType,
+    Location,
+    Movement,
+    ServiceEvent,
+)
 
 
 class Base(TestCase):
@@ -200,3 +207,124 @@ class DashboardTests(Base):
             pm_due_date=self.today - timedelta(days=3),
         )
         self.assertEqual(services.dashboard_stats()["expired"], 1)
+
+
+class OutOfOperationTests(Base):
+    """The ageing column the workbook renders as #NAME?, and the guarantee that
+    the daily report can never disagree with the OOS list again."""
+
+    def test_days_out_counts_from_the_start_date(self):
+        eq = self.make()
+        ev = ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.REPAIR,
+            start_date=self.today - timedelta(days=120),
+        )
+        self.assertEqual(ev.days_out(self.today), 120)
+        self.assertEqual(ev.age_bucket, "90+")
+
+    def test_a_closed_event_stops_ageing_on_the_day_it_closed(self):
+        eq = self.make()
+        ev = ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.REPAIR,
+            start_date=self.today - timedelta(days=30),
+            closed_on=self.today - timedelta(days=10),
+        )
+        self.assertEqual(ev.days_out(self.today), 20)
+
+    def test_closing_the_last_event_puts_the_unit_back_in_service(self):
+        eq = self.make(status=Equipment.Status.MAINTENANCE)
+        ev = ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.REPAIR,
+            start_date=self.today - timedelta(days=5),
+        )
+        ev.close(on=self.today)
+        eq.refresh_from_db()
+        self.assertEqual(eq.status, Equipment.Status.AVAILABLE)
+
+    def test_a_unit_out_twice_stays_out_until_the_last_event_closes(self):
+        eq = self.make(status=Equipment.Status.MAINTENANCE)
+        first = ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.REPAIR,
+            start_date=self.today - timedelta(days=5),
+        )
+        ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.TUV,
+            start_date=self.today - timedelta(days=2),
+        )
+        first.close(on=self.today)
+        eq.refresh_from_db()
+        self.assertEqual(eq.status, Equipment.Status.MAINTENANCE)
+
+    def test_daily_report_oos_always_equals_the_open_oos_list(self):
+        """The whole point of the rebuild. In the workbook these two numbers are
+        typed separately and today they disagree (the pivot says 117, the list
+        says 113). Here they are the same query, so they cannot drift."""
+        for i in range(7):
+            eq = self.make(number=f"BLT-1{i:02}")
+            ServiceEvent.objects.create(
+                equipment=eq,
+                reason=ServiceEvent.Reason.REPAIR,
+                start_date=self.today - timedelta(days=i + 1),
+            )
+        # one that came back -- must not be counted
+        eq = self.make(number="BLT-200")
+        ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.PM,
+            start_date=self.today - timedelta(days=9),
+            closed_on=self.today,
+        )
+        report = services.daily_report(as_of=self.today)
+        register = services.oos_register(as_of=self.today)
+        self.assertEqual(report["totals"]["oos"], 7)
+        self.assertEqual(len(register), 7)
+        self.assertEqual(report["totals"]["oos"], len(register))
+
+    def test_in_service_is_actual_count_minus_units_out(self):
+        for i in range(4):
+            self.make(number=f"BLT-3{i:02}")
+        eq = self.make(number="BLT-400")
+        ServiceEvent.objects.create(
+            equipment=eq,
+            reason=ServiceEvent.Reason.TUV,
+            start_date=self.today,
+        )
+        t = services.daily_report(as_of=self.today)["totals"]
+        self.assertEqual(t["actual"], 5)
+        self.assertEqual(t["oos"], 1)
+        self.assertEqual(t["in_service"], 4)
+        self.assertEqual(t["in_service_pct"], 80.0)
+
+    def test_grand_total_follows_the_stations_own_arithmetic(self):
+        """Their sheet computes G = C - D + E + F. Overage and borrowed units are
+        added to the fleet, units lent to another station are taken off it."""
+        self.make(number="BLT-501")
+        self.make(number="BLT-502", is_overage=True)
+        self.make(number="BLT-503", ownership=Equipment.Ownership.LOCAL_SUPPORT)
+        self.make(number="BLT-504", ownership=Equipment.Ownership.OUT_STATION)
+        t = services.daily_report(as_of=self.today)["totals"]
+        self.assertEqual(t["actual"], 4)
+        self.assertEqual(t["overage"], 1)
+        self.assertEqual(t["from_local"], 1)
+        self.assertEqual(t["to_out_station"], 1)
+        # C = actual - from_local + to_out_station - overage
+        self.assertEqual(t["grand_total"], 4 - 1 + 1 - 1)
+
+    def test_ageing_buckets_do_not_double_count(self):
+        spans = [1, 5, 20, 45, 75, 200, 400]
+        for i, d in enumerate(spans):
+            eq = self.make(number=f"BLT-6{i:02}")
+            ServiceEvent.objects.create(
+                equipment=eq,
+                reason=ServiceEvent.Reason.REPAIR,
+                start_date=self.today - timedelta(days=d),
+            )
+        a = services.oos_aging(as_of=self.today)
+        self.assertEqual(sum(b["n"] for b in a["buckets"]), len(spans))
+        self.assertEqual(a["stale_count"], 2)  # 200 and 400 days
+        self.assertEqual(a["max_days"], 400)
